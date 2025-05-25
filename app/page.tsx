@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Cloud, CloudRain, Sun, Mic, MicOff, Bell } from "lucide-react"
+import { Cloud, CloudRain, Sun, Mic, MicOff, Bell, MapPin, Volume2, VolumeX } from "lucide-react"
 import { WeatherCard } from "@/components/weather-card"
 import { RecommendationCard } from "@/components/recommendation-card"
 import { VoiceCommands } from "@/components/voice-commands"
 import { NotificationSetup } from "@/components/notification-setup"
+import { HourlyForecast } from "@/components/hourly-forecast"
 import { WeatherService } from "@/lib/weather-service"
 import { NotificationService } from "@/lib/notification-service"
 import { VoiceService } from "@/lib/voice-service"
+import { LocationService } from "@/lib/location-service"
 import { WeatherAnimation } from "@/components/weather-animations"
+import { WeatherSounds } from "@/components/weather-sounds"
 import { type translations, getTranslation, type Language } from "@/lib/translations"
+import Image from "next/image"
 
 const KENYA_CITIES = [
   "Nairobi",
@@ -40,17 +44,22 @@ const KENYA_CITIES = [
   "Kiambu",
 ]
 
-export default function WeatherApp() {
+export default function EltekWeatherApp() {
   const [userName, setUserName] = useState("")
   const [isFirstTime, setIsFirstTime] = useState(true)
   const [selectedCity, setSelectedCity] = useState("Nairobi")
   const [weatherData, setWeatherData] = useState<any>(null)
   const [forecast, setForecast] = useState<any[]>([])
+  const [hourlyForecast, setHourlyForecast] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceGender, setVoiceGender] = useState<"male" | "female">("female")
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [language, setLanguage] = useState<Language>("en")
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null)
+  const [locationName, setLocationName] = useState("")
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [weatherTheme, setWeatherTheme] = useState("default")
 
   const t = (key: keyof typeof translations.en) => getTranslation(key, language)
 
@@ -62,19 +71,33 @@ export default function WeatherApp() {
     if (storedName && hasVisited) {
       setUserName(storedName)
       setIsFirstTime(false)
-      loadWeatherData("Nairobi")
+      requestLocation()
     }
 
-    // Initialize notification service
+    // Initialize services
     NotificationService.init()
+    VoiceService.init()
   }, [])
+
+  const requestLocation = async () => {
+    try {
+      const location = await LocationService.getCurrentLocation()
+      setCurrentLocation(location)
+      const cityName = await LocationService.getCityName(location.lat, location.lon)
+      setLocationName(cityName)
+      loadWeatherDataByCoords(location.lat, location.lon, cityName)
+    } catch (error) {
+      console.error("Location error:", error)
+      loadWeatherData("Nairobi")
+    }
+  }
 
   const handleFirstTimeSetup = (name: string) => {
     setUserName(name)
     setIsFirstTime(false)
     localStorage.setItem("userName", name)
     localStorage.setItem("hasVisited", "true")
-    loadWeatherData("Nairobi")
+    requestLocation()
   }
 
   const loadWeatherData = async (city: string) => {
@@ -82,10 +105,13 @@ export default function WeatherApp() {
     try {
       const weather = await WeatherService.getCurrentWeather(city)
       const forecastData = await WeatherService.getForecast(city)
+      const hourlyData = await WeatherService.getHourlyForecast(city)
 
       setWeatherData(weather)
       setForecast(forecastData)
+      setHourlyForecast(hourlyData)
       setSelectedCity(city)
+      updateWeatherTheme(weather.weather[0].main)
 
       // Store weather data for offline access
       localStorage.setItem(
@@ -93,6 +119,7 @@ export default function WeatherApp() {
         JSON.stringify({
           weather,
           forecast: forecastData,
+          hourly: hourlyData,
           timestamp: Date.now(),
           city,
         }),
@@ -110,13 +137,90 @@ export default function WeatherApp() {
         const parsed = JSON.parse(offlineData)
         setWeatherData(parsed.weather)
         setForecast(parsed.forecast)
+        setHourlyForecast(parsed.hourly || [])
       }
     }
     setLoading(false)
   }
 
+  const loadWeatherDataByCoords = async (lat: number, lon: number, cityName: string) => {
+    setLoading(true)
+    try {
+      const weather = await WeatherService.getCurrentWeatherByCoords(lat, lon)
+      const forecastData = await WeatherService.getForecastByCoords(lat, lon)
+      const hourlyData = await WeatherService.getHourlyForecastByCoords(lat, lon)
+
+      setWeatherData(weather)
+      setForecast(forecastData)
+      setHourlyForecast(hourlyData)
+      setSelectedCity(cityName)
+      updateWeatherTheme(weather.weather[0].main)
+
+      // Store weather data for offline access
+      localStorage.setItem(
+        "lastWeatherData",
+        JSON.stringify({
+          weather,
+          forecast: forecastData,
+          hourly: hourlyData,
+          timestamp: Date.now(),
+          city: cityName,
+        }),
+      )
+
+      // Schedule notifications for weather events
+      if (notificationsEnabled) {
+        NotificationService.scheduleWeatherAlerts(forecastData, userName)
+      }
+    } catch (error) {
+      console.error("Error loading weather data:", error)
+      loadWeatherData("Nairobi")
+    }
+    setLoading(false)
+  }
+
+  const updateWeatherTheme = (weatherCondition: string) => {
+    switch (weatherCondition.toLowerCase()) {
+      case "clear":
+        setWeatherTheme("sunny")
+        break
+      case "rain":
+      case "drizzle":
+        setWeatherTheme("rainy")
+        break
+      case "thunderstorm":
+        setWeatherTheme("stormy")
+        break
+      case "clouds":
+        setWeatherTheme("cloudy")
+        break
+      case "snow":
+        setWeatherTheme("snowy")
+        break
+      default:
+        setWeatherTheme("default")
+    }
+  }
+
+  const getThemeClasses = () => {
+    switch (weatherTheme) {
+      case "sunny":
+        return "from-yellow-300 via-orange-400 to-red-400"
+      case "rainy":
+        return "from-gray-600 via-blue-700 to-blue-900"
+      case "stormy":
+        return "from-gray-800 via-gray-900 to-black"
+      case "cloudy":
+        return "from-gray-400 via-gray-500 to-gray-600"
+      case "snowy":
+        return "from-blue-200 via-blue-300 to-blue-400"
+      default:
+        return "from-blue-400 via-blue-500 to-blue-600"
+    }
+  }
+
   const handleVoiceCommand = (command: string) => {
-    const response = VoiceService.processCommand(command, weatherData, forecast)
+    const response = VoiceService.processCommand(command, weatherData, forecast, language)
     VoiceService.speak(response, voiceGender)
   }
 
@@ -139,11 +243,14 @@ export default function WeatherApp() {
 
   if (isFirstTime) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 flex items-center justify-center p-4">
+      <div className={`min-h-screen bg-gradient-to-br ${getThemeClasses()} flex items-center justify-center p-4`}>
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{t("welcome")}</CardTitle>
-            <CardDescription>{t("welcomeDescription")}</CardDescription>
+            <div className="flex justify-center mb-4">
+              <Image src="/eltek-logo.jpg" alt="Eltek Logo" width={80} height={80} className="rounded-lg" />
+            </div>
+            <CardTitle className="text-2xl">Welcome to Eltek Weather!</CardTitle>
+            <CardDescription>Get personalized weather updates and recommendations for Kenya</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -172,18 +279,34 @@ export default function WeatherApp() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 relative">
-      {weatherData && <WeatherAnimation weatherType={weatherData.weather[0].main} className="opacity-20" />}
+    <div className={`min-h-screen bg-gradient-to-br ${getThemeClasses()} relative transition-all duration-1000`}>
+      {weatherData && (
+        <>
+          <WeatherAnimation weatherType={weatherData.weather[0].main} className="opacity-30" />
+          <WeatherSounds weatherType={weatherData.weather[0].main} enabled={soundEnabled} />
+        </>
+      )}
       <div className="container mx-auto p-4 space-y-6 relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between text-white">
-          <div>
-            <h1 className="text-3xl font-bold">
-              {t("hello")}, {userName}! 👋
-            </h1>
-            <p className="text-blue-100">{t("stayPrepared")}</p>
+          <div className="flex items-center gap-4">
+            <Image src="/eltek-logo.jpg" alt="Eltek Weather" width={50} height={50} className="rounded-lg" />
+            <div>
+              <h1 className="text-3xl font-bold">
+                {t("hello")}, {userName}! 👋
+              </h1>
+              <p className="text-blue-100">{t("stayPrepared")}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="bg-white text-blue-600"
+            >
+              {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
             <Select value={language} onValueChange={(value: Language) => setLanguage(value)}>
               <SelectTrigger className="w-20 bg-white text-blue-600">
                 <SelectValue />
@@ -213,10 +336,16 @@ export default function WeatherApp() {
           </div>
         </div>
 
-        {/* City Selection */}
-        <Card>
+        {/* Location & City Selection */}
+        <Card className="bg-white/90 backdrop-blur-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
+              {currentLocation && (
+                <Button variant="outline" size="sm" onClick={requestLocation} className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  {locationName || "Current Location"}
+                </Button>
+              )}
               <Select value={selectedCity} onValueChange={loadWeatherData}>
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Select city" />
@@ -248,17 +377,20 @@ export default function WeatherApp() {
         ) : weatherData ? (
           <>
             {/* Current Weather */}
-            <WeatherCard weather={weatherData} city={selectedCity} t={t} />
+            <WeatherCard weather={weatherData} city={locationName || selectedCity} t={t} />
+
+            {/* Hourly Forecast */}
+            <HourlyForecast hourlyData={hourlyForecast} t={t} />
 
             {/* Recommendations */}
             <RecommendationCard weather={weatherData} userName={userName} t={t} />
 
-            {/* Forecast */}
-            <Card>
+            {/* 5-Day Forecast */}
+            <Card className="bg-white/90 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Cloud className="h-5 w-5" />
-                  5-Day Forecast
+                  {t("forecast")}
                 </CardTitle>
               </CardHeader>
               <CardContent>

@@ -1,7 +1,7 @@
 {
-  "name": "Kenya Weather App",
-  "short_name": "KenyaWeather",
-  "description": "Smart weather app for Kenya with personalized recommendations and notifications",
+  "name": "Eltek Weather App",
+  "short_name": "EltekWeather",
+  "description": "Smart weather app for Kenya with personalized recommendations and notifications by Eltek",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#3B82F6",

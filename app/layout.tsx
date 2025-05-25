@@ -6,8 +6,8 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Kenya Weather App",
-  description: "Smart weather app for Kenya with personalized recommendations and notifications",
+  title: "Eltek Weather App",
+  description: "Smart weather app for Kenya with personalized recommendations and notifications by Eltek",
   manifest: "/manifest.json",
   themeColor: "#3B82F6",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1",
