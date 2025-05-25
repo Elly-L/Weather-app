@@ -10,13 +10,15 @@ interface VoiceCommandsProps {
 export function VoiceCommands({ isListening, t }: VoiceCommandsProps) {
   const commands = [
     "What's the weather like?",
-    "Will it rain today?",
-    "How hot is it?",
-    "What should I wear?",
-    "Is it going to be sunny?",
-    "Do I need an umbrella?",
-    "What's the temperature?",
-    "How's the weather tomorrow?",
+    "Will it rain at 3 PM?",
+    "How hot will it be tomorrow?",
+    "What should I wear at 6 PM?",
+    "Is it going to be sunny later?",
+    "Do I need an umbrella tonight?",
+    "What's the temperature in 2 hours?",
+    "How's the weather at 10 AM tomorrow?",
+    "Will it rain this evening?",
+    "What's the weather like at noon?",
   ]
 
   if (!isListening) return null
@@ -26,9 +28,9 @@ export function VoiceCommands({ isListening, t }: VoiceCommandsProps) {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-red-800">
           <Mic className="h-5 w-5 animate-pulse" />
-          {t("listeningFor")}
+          {t("listeningFor")} - Advanced NLP Enabled
         </CardTitle>
-        <CardDescription className="text-red-600">{t("trySaying")}</CardDescription>
+        <CardDescription className="text-red-600">{t("trySaying")} (Now with time-specific queries!)</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-2">
@@ -38,6 +40,9 @@ export function VoiceCommands({ isListening, t }: VoiceCommandsProps) {
             </Badge>
           ))}
         </div>
+        <p className="text-xs text-red-600 mt-3">
+          💡 Try asking about specific times like "3 PM", "tomorrow morning", "in 2 hours", etc.
+        </p>
       </CardContent>
     </Card>
   )

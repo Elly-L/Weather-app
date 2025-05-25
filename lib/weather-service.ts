@@ -52,7 +52,7 @@ export class WeatherService {
           dailyForecasts.push(item)
           processedDays.add(date)
         }
-        if (dailyForecasts.length >= 5) break
+        if (dailyForecasts.length >= 7) break
       }
 
       return dailyForecasts
@@ -82,7 +82,7 @@ export class WeatherService {
           dailyForecasts.push(item)
           processedDays.add(date)
         }
-        if (dailyForecasts.length >= 5) break
+        if (dailyForecasts.length >= 7) break
       }
 
       return dailyForecasts
@@ -92,7 +92,7 @@ export class WeatherService {
     }
   }
 
-  static async getHourlyForecast(city: string) {
+  static async getDetailedHourlyForecast(city: string) {
     try {
       const response = await fetch(`${BASE_URL}/forecast?q=${city},KE&appid=${API_KEY}&units=metric`)
 
@@ -101,14 +101,72 @@ export class WeatherService {
       }
 
       const data = await response.json()
-      return data.list.slice(0, 24) // Return next 24 hours
+      const now = new Date()
+      const currentHour = now.getHours()
+
+      // Get all hourly data for next 48 hours
+      const hourlyData = []
+
+      // Start from current hour
+      const startTime = new Date(now)
+      startTime.setMinutes(0, 0, 0) // Round to current hour
+
+      // Process each 3-hour interval from the API
+      for (let i = 0; i < Math.min(data.list.length, 16); i++) {
+        const item = data.list[i]
+        const itemTime = new Date(item.dt * 1000)
+
+        // Add the original 3-hour data point
+        hourlyData.push(item)
+
+        // Interpolate 2 additional hours between this and next data point
+        if (i < data.list.length - 1) {
+          const nextItem = data.list[i + 1]
+          const nextTime = new Date(nextItem.dt * 1000)
+
+          for (let h = 1; h <= 2; h++) {
+            const interpolatedTime = new Date(itemTime.getTime() + h * 60 * 60 * 1000)
+            if (interpolatedTime <= nextTime) {
+              // Create interpolated weather data
+              const interpolatedData = {
+                ...item,
+                dt: Math.floor(interpolatedTime.getTime() / 1000),
+                main: {
+                  ...item.main,
+                  temp: item.main.temp + (nextItem.main.temp - item.main.temp) * (h / 3),
+                  feels_like: item.main.feels_like + (nextItem.main.feels_like - item.main.feels_like) * (h / 3),
+                  humidity: Math.round(item.main.humidity + (nextItem.main.humidity - item.main.humidity) * (h / 3)),
+                  pressure: Math.round(item.main.pressure + (nextItem.main.pressure - item.main.pressure) * (h / 3)),
+                },
+                wind: {
+                  ...item.wind,
+                  speed: item.wind.speed + (nextItem.wind.speed - item.wind.speed) * (h / 3),
+                },
+                pop: item.pop ? item.pop + (nextItem.pop - item.pop) * (h / 3) : 0,
+              }
+              hourlyData.push(interpolatedData)
+            }
+          }
+        }
+      }
+
+      // Sort by time and filter to show from current hour onwards
+      const sortedData = hourlyData.sort((a, b) => a.dt - b.dt)
+
+      // Filter to start from current time or next available hour
+      const filteredData = sortedData.filter((item) => {
+        const itemTime = new Date(item.dt * 1000)
+        return itemTime >= startTime
+      })
+
+      return filteredData.slice(0, 48)
     } catch (error) {
-      console.error("Error fetching hourly forecast:", error)
+      console.error("Error fetching detailed hourly forecast:", error)
       throw error
     }
   }
 
-  static async getHourlyForecastByCoords(lat: number, lon: number) {
+  static async getDetailedHourlyForecastByCoords(lat: number, lon: number) {
     try {
       const response = await fetch(`${BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`)
 
@@ -117,11 +175,77 @@ export class WeatherService {
       }
 
       const data = await response.json()
-      return data.list.slice(0, 24) // Return next 24 hours
+      const now = new Date()
+
+      // Get all hourly data for next 48 hours
+      const hourlyData = []
+
+      // Start from current hour
+      const startTime = new Date(now)
+      startTime.setMinutes(0, 0, 0) // Round to current hour
+
+      // Process each 3-hour interval from the API
+      for (let i = 0; i < Math.min(data.list.length, 16); i++) {
+        const item = data.list[i]
+        const itemTime = new Date(item.dt * 1000)
+
+        // Add the original 3-hour data point
+        hourlyData.push(item)
+
+        // Interpolate 2 additional hours between this and next data point
+        if (i < data.list.length - 1) {
+          const nextItem = data.list[i + 1]
+          const nextTime = new Date(nextItem.dt * 1000)
+
+          for (let h = 1; h <= 2; h++) {
+            const interpolatedTime = new Date(itemTime.getTime() + h * 60 * 60 * 1000)
+            if (interpolatedTime <= nextTime) {
+              // Create interpolated weather data
+              const interpolatedData = {
+                ...item,
+                dt: Math.floor(interpolatedTime.getTime() / 1000),
+                main: {
+                  ...item.main,
+                  temp: item.main.temp + (nextItem.main.temp - item.main.temp) * (h / 3),
+                  feels_like: item.main.feels_like + (nextItem.main.feels_like - item.main.feels_like) * (h / 3),
+                  humidity: Math.round(item.main.humidity + (nextItem.main.humidity - item.main.humidity) * (h / 3)),
+                  pressure: Math.round(item.main.pressure + (nextItem.main.pressure - item.main.pressure) * (h / 3)),
+                },
+                wind: {
+                  ...item.wind,
+                  speed: item.wind.speed + (nextItem.wind.speed - item.wind.speed) * (h / 3),
+                },
+                pop: item.pop ? item.pop + (nextItem.pop - item.pop) * (h / 3) : 0,
+              }
+              hourlyData.push(interpolatedData)
+            }
+          }
+        }
+      }
+
+      // Sort by time and filter to show from current hour onwards
+      const sortedData = hourlyData.sort((a, b) => a.dt - b.dt)
+
+      // Filter to start from current time or next available hour
+      const filteredData = sortedData.filter((item) => {
+        const itemTime = new Date(item.dt * 1000)
+        return itemTime >= startTime
+      })
+
+      return filteredData.slice(0, 48)
     } catch (error) {
-      console.error("Error fetching hourly forecast by coords:", error)
+      console.error("Error fetching detailed hourly forecast by coords:", error)
       throw error
     }
+  }
+
+  // Legacy methods for backward compatibility
+  static async getHourlyForecast(city: string) {
+    return this.getDetailedHourlyForecast(city)
+  }
+
+  static async getHourlyForecastByCoords(lat: number, lon: number) {
+    return this.getDetailedHourlyForecastByCoords(lat, lon)
   }
 
   static async getWeatherAlerts(city: string) {

@@ -1,14 +1,17 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Cloud, CloudRain, Sun, Wind, Droplets, Thermometer, Eye } from "lucide-react"
+import { Cloud, CloudRain, Sun, Wind, Droplets, Thermometer, Eye, Clock, Calendar } from "lucide-react"
 
 interface WeatherCardProps {
   weather: any
   city: string
   t: (key: string) => string
+  viewMode?: "current" | "hourly" | "daily"
+  hourlyTime?: Date
+  dailyDate?: Date
 }
 
-export function WeatherCard({ weather, city, t }: WeatherCardProps) {
+export function WeatherCard({ weather, city, t, viewMode = "current", hourlyTime, dailyDate }: WeatherCardProps) {
   const getWeatherIcon = (main: string) => {
     switch (main) {
       case "Rain":
@@ -29,20 +32,65 @@ export function WeatherCard({ weather, city, t }: WeatherCardProps) {
     return "text-blue-600"
   }
 
+  const getTimeDisplay = () => {
+    const now = new Date()
+
+    if (viewMode === "hourly" && hourlyTime) {
+      return hourlyTime.toLocaleString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    }
+    if (viewMode === "daily" && dailyDate) {
+      return dailyDate.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    }
+
+    // Show current accurate time for current view
+    return now.toLocaleString("en-US", {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+  }
+
+  const getViewModeIcon = () => {
+    if (viewMode === "hourly") return <Clock className="h-3 w-3" />
+    if (viewMode === "daily") return <Calendar className="h-3 w-3" />
+    return null
+  }
+
+  const getViewModeLabel = () => {
+    if (viewMode === "hourly") return "Hourly Forecast: "
+    if (viewMode === "daily") return "Daily Forecast: "
+    return ""
+  }
+
   return (
     <Card className="bg-white/90 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>{city}</span>
-          <Badge variant="secondary">
-            {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}
+          <Badge variant="secondary" className="flex items-center gap-1">
+            {getViewModeIcon()}
+            {getTimeDisplay()}
           </Badge>
         </CardTitle>
-        <CardDescription className="capitalize">{weather.weather[0].description}</CardDescription>
+        <CardDescription className="capitalize">
+          {getViewModeLabel()}
+          {weather.weather[0].description}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between mb-6">
@@ -85,10 +133,18 @@ export function WeatherCard({ weather, city, t }: WeatherCardProps) {
             <Eye className="h-4 w-4 text-purple-500" />
             <div>
               <p className="text-sm text-gray-600">{t("visibility")}</p>
-              <p className="font-medium">{(weather.visibility / 1000).toFixed(1)} km</p>
+              <p className="font-medium">{weather.visibility ? (weather.visibility / 1000).toFixed(1) : "N/A"} km</p>
             </div>
           </div>
         </div>
+
+        {weather.pop && (
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Rain Probability:</strong> {Math.round(weather.pop * 100)}%
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

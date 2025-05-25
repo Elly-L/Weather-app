@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Cloud, CloudRain, Sun, Mic, MicOff, Bell, MapPin, Volume2, VolumeX } from "lucide-react"
+import { Mic, MicOff, Bell, MapPin, Volume2, VolumeX } from "lucide-react"
 import { WeatherCard } from "@/components/weather-card"
 import { RecommendationCard } from "@/components/recommendation-card"
 import { VoiceCommands } from "@/components/voice-commands"
 import { NotificationSetup } from "@/components/notification-setup"
 import { HourlyForecast } from "@/components/hourly-forecast"
+import { DailyForecast } from "@/components/daily-forecast"
 import { WeatherService } from "@/lib/weather-service"
 import { NotificationService } from "@/lib/notification-service"
 import { VoiceService } from "@/lib/voice-service"
@@ -42,12 +43,59 @@ const KENYA_CITIES = [
   "Langata",
   "Embakasi",
   "Kiambu",
+  "Machakos",
+  "Meru",
+  "Nyeri",
+  "Kericho",
+  "Bomet",
+  "Migori",
+  "Homa Bay",
+  "Siaya",
+  "Busia",
+  "Bungoma",
+  "Webuye",
+  "Kapenguria",
+  "Lodwar",
+  "Turkana",
+  "Marsabit",
+  "Moyale",
+  "Mandera",
+  "Wajir",
+  "Isiolo",
+  "Embu",
+  "Kirinyaga",
+  "Murang'a",
+  "Kiambu",
+  "Kajiado",
+  "Machakos",
+  "Makueni",
+  "Kitui",
+  "Mwingi",
+  "Tharaka Nithi",
+  "Mbeere",
+  "Laikipia",
+  "Samburu",
+  "Baringo",
+  "Elgeyo Marakwet",
+  "Nandi",
+  "Trans Nzoia",
+  "Uasin Gishu",
+  "West Pokot",
+  "Turkana",
+  "Kwale",
+  "Kilifi",
+  "Tana River",
+  "Lamu",
+  "Taita Taveta",
+  "Voi",
+  "Taveta",
 ]
 
 export default function EltekWeatherApp() {
   const [userName, setUserName] = useState("")
   const [isFirstTime, setIsFirstTime] = useState(true)
   const [selectedCity, setSelectedCity] = useState("Nairobi")
+  const [currentDisplayCity, setCurrentDisplayCity] = useState("Nairobi")
   const [weatherData, setWeatherData] = useState<any>(null)
   const [forecast, setForecast] = useState<any[]>([])
   const [hourlyForecast, setHourlyForecast] = useState<any[]>([])
@@ -60,6 +108,10 @@ export default function EltekWeatherApp() {
   const [locationName, setLocationName] = useState("")
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [weatherTheme, setWeatherTheme] = useState("default")
+  const [selectedHourWeather, setSelectedHourWeather] = useState<any>(null)
+  const [selectedDayWeather, setSelectedDayWeather] = useState<any>(null)
+  const [viewMode, setViewMode] = useState<"current" | "hourly" | "daily">("current")
+  const [currentTime, setCurrentTime] = useState(new Date())
 
   const t = (key: keyof typeof translations.en) => getTranslation(key, language)
 
@@ -79,12 +131,22 @@ export default function EltekWeatherApp() {
     VoiceService.init()
   }, [])
 
+  useEffect(() => {
+    // Update current time every minute
+    const timeInterval = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000) // Update every minute
+
+    return () => clearInterval(timeInterval)
+  }, [])
+
   const requestLocation = async () => {
     try {
       const location = await LocationService.getCurrentLocation()
       setCurrentLocation(location)
       const cityName = await LocationService.getCityName(location.lat, location.lon)
       setLocationName(cityName)
+      setCurrentDisplayCity(cityName)
       loadWeatherDataByCoords(location.lat, location.lon, cityName)
     } catch (error) {
       console.error("Location error:", error)
@@ -105,12 +167,16 @@ export default function EltekWeatherApp() {
     try {
       const weather = await WeatherService.getCurrentWeather(city)
       const forecastData = await WeatherService.getForecast(city)
-      const hourlyData = await WeatherService.getHourlyForecast(city)
+      const hourlyData = await WeatherService.getDetailedHourlyForecast(city)
 
       setWeatherData(weather)
       setForecast(forecastData)
       setHourlyForecast(hourlyData)
       setSelectedCity(city)
+      setCurrentDisplayCity(city)
+      setViewMode("current")
+      setSelectedHourWeather(null)
+      setSelectedDayWeather(null)
       updateWeatherTheme(weather.weather[0].main)
 
       // Store weather data for offline access
@@ -138,6 +204,7 @@ export default function EltekWeatherApp() {
         setWeatherData(parsed.weather)
         setForecast(parsed.forecast)
         setHourlyForecast(parsed.hourly || [])
+        setCurrentDisplayCity(parsed.city || city)
       }
     }
     setLoading(false)
@@ -148,12 +215,16 @@ export default function EltekWeatherApp() {
     try {
       const weather = await WeatherService.getCurrentWeatherByCoords(lat, lon)
       const forecastData = await WeatherService.getForecastByCoords(lat, lon)
-      const hourlyData = await WeatherService.getHourlyForecastByCoords(lat, lon)
+      const hourlyData = await WeatherService.getDetailedHourlyForecastByCoords(lat, lon)
 
       setWeatherData(weather)
       setForecast(forecastData)
       setHourlyForecast(hourlyData)
       setSelectedCity(cityName)
+      setCurrentDisplayCity(cityName)
+      setViewMode("current")
+      setSelectedHourWeather(null)
+      setSelectedDayWeather(null)
       updateWeatherTheme(weather.weather[0].main)
 
       // Store weather data for offline access
@@ -203,24 +274,28 @@ export default function EltekWeatherApp() {
   }
 
   const getThemeClasses = () => {
-    switch (weatherTheme) {
-      case "sunny":
+    const currentWeather = selectedHourWeather || selectedDayWeather || weatherData
+    if (!currentWeather) return "from-blue-400 via-blue-500 to-blue-600"
+
+    switch (currentWeather.weather[0].main.toLowerCase()) {
+      case "clear":
         return "from-yellow-300 via-orange-400 to-red-400"
-      case "rainy":
+      case "rain":
+      case "drizzle":
         return "from-gray-600 via-blue-700 to-blue-900"
-      case "stormy":
+      case "thunderstorm":
         return "from-gray-800 via-gray-900 to-black"
-      case "cloudy":
+      case "clouds":
         return "from-gray-400 via-gray-500 to-gray-600"
-      case "snowy":
+      case "snow":
         return "from-blue-200 via-blue-300 to-blue-400"
       default:
         return "from-blue-400 via-blue-500 to-blue-600"
     }
   }
 
-  const handleVoiceCommand = (command: string) => {
-    const response = VoiceService.processCommand(command, weatherData, forecast, language)
+  const handleVoiceCommand = async (command: string) => {
+    const response = await VoiceService.processCommand(command, weatherData, forecast, hourlyForecast, language)
     VoiceService.speak(response, voiceGender)
   }
 
@@ -239,6 +314,27 @@ export default function EltekWeatherApp() {
     if (enabled && weatherData) {
       NotificationService.scheduleWeatherAlerts(forecast, userName)
     }
+  }
+
+  const handleHourSelect = (hourData: any, time: Date) => {
+    setSelectedHourWeather(hourData)
+    setSelectedDayWeather(null)
+    setViewMode("hourly")
+    updateWeatherTheme(hourData.weather[0].main)
+  }
+
+  const handleDaySelect = (dayData: any, date: Date) => {
+    setSelectedDayWeather(dayData)
+    setSelectedHourWeather(null)
+    setViewMode("daily")
+    updateWeatherTheme(dayData.weather[0].main)
+  }
+
+  const resetToCurrentView = () => {
+    setSelectedHourWeather(null)
+    setSelectedDayWeather(null)
+    setViewMode("current")
+    updateWeatherTheme(weatherData?.weather[0].main || "clear")
   }
 
   if (isFirstTime) {
@@ -278,12 +374,14 @@ export default function EltekWeatherApp() {
     )
   }
 
+  const displayWeather = selectedHourWeather || selectedDayWeather || weatherData
+
   return (
     <div className={`min-h-screen bg-gradient-to-br ${getThemeClasses()} relative transition-all duration-1000`}>
-      {weatherData && (
+      {displayWeather && (
         <>
-          <WeatherAnimation weatherType={weatherData.weather[0].main} className="opacity-30" />
-          <WeatherSounds weatherType={weatherData.weather[0].main} enabled={soundEnabled} />
+          <WeatherAnimation weatherType={displayWeather.weather[0].main} className="opacity-30" />
+          <WeatherSounds weatherType={displayWeather.weather[0].main} enabled={soundEnabled} />
         </>
       )}
       <div className="container mx-auto p-4 space-y-6 relative z-10">
@@ -296,6 +394,14 @@ export default function EltekWeatherApp() {
                 {t("hello")}, {userName}! 👋
               </h1>
               <p className="text-blue-100">{t("stayPrepared")}</p>
+              <p className="text-xs text-blue-200">
+                Current time:{" "}
+                {currentTime.toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -339,7 +445,7 @@ export default function EltekWeatherApp() {
         {/* Location & City Selection */}
         <Card className="bg-white/90 backdrop-blur-sm">
           <CardContent className="p-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               {currentLocation && (
                 <Button variant="outline" size="sm" onClick={requestLocation} className="flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
@@ -350,7 +456,7 @@ export default function EltekWeatherApp() {
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Select city" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
                   {KENYA_CITIES.map((city) => (
                     <SelectItem key={city} value={city}>
                       {city}
@@ -362,6 +468,11 @@ export default function EltekWeatherApp() {
                 <Bell className="h-4 w-4 mr-2" />
                 {notificationsEnabled ? "Notifications On" : "Enable Notifications"}
               </Button>
+              {(selectedHourWeather || selectedDayWeather) && (
+                <Button variant="outline" size="sm" onClick={resetToCurrentView}>
+                  Back to Current
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -377,47 +488,23 @@ export default function EltekWeatherApp() {
         ) : weatherData ? (
           <>
             {/* Current Weather */}
-            <WeatherCard weather={weatherData} city={locationName || selectedCity} t={t} />
+            <WeatherCard
+              weather={displayWeather}
+              city={currentDisplayCity}
+              t={t}
+              viewMode={viewMode}
+              hourlyTime={selectedHourWeather ? new Date(selectedHourWeather.dt * 1000) : undefined}
+              dailyDate={selectedDayWeather ? new Date(selectedDayWeather.dt * 1000) : undefined}
+            />
 
             {/* Hourly Forecast */}
-            <HourlyForecast hourlyData={hourlyForecast} t={t} />
+            <HourlyForecast hourlyData={hourlyForecast} t={t} onHourSelect={handleHourSelect} />
+
+            {/* Daily Forecast */}
+            <DailyForecast dailyData={forecast} t={t} onDaySelect={handleDaySelect} />
 
             {/* Recommendations */}
-            <RecommendationCard weather={weatherData} userName={userName} t={t} />
-
-            {/* 5-Day Forecast */}
-            <Card className="bg-white/90 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cloud className="h-5 w-5" />
-                  {t("forecast")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                  {forecast.slice(0, 5).map((day, index) => (
-                    <div key={index} className="text-center p-4 rounded-lg bg-blue-50">
-                      <p className="font-medium text-sm">
-                        {new Date(day.dt * 1000).toLocaleDateString("en-US", { weekday: "short" })}
-                      </p>
-                      <div className="my-2">
-                        {day.weather[0].main === "Rain" ? (
-                          <CloudRain className="h-8 w-8 mx-auto text-blue-600" />
-                        ) : day.weather[0].main === "Clear" ? (
-                          <Sun className="h-8 w-8 mx-auto text-yellow-500" />
-                        ) : (
-                          <Cloud className="h-8 w-8 mx-auto text-gray-500" />
-                        )}
-                      </div>
-                      <p className="text-sm font-medium">
-                        {Math.round(day.main.temp_max)}°/{Math.round(day.main.temp_min)}°
-                      </p>
-                      <p className="text-xs text-gray-600 capitalize">{day.weather[0].description}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <RecommendationCard weather={displayWeather} userName={userName} t={t} />
 
             {/* Notification Setup */}
             <NotificationSetup
